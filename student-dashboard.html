@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Student Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="container">
+    <h2>Welcome, <span id="student-name">Student</span>!</h2>
+    <p>This is your dashboard.</p>
+
+    <h3>Attendance:</h3>
+    <p>Login/Logout via Facial Recognition</p>
+
+    <!-- Webcam for Facial Recognition -->
+    <video id="video" width="720" height="560" autoplay muted></video>
+    <button onclick="startRecognition()">Start Facial Recognition</button>
+    <button onclick="startRegistration()">Start Registration</button>
+    <button onclick="logout()">Logout</button>
+    <p id="attendance-status"></p>
+
+    <h3>GPS Location:</h3>
+    <p id="location">Getting location...</p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+<script>
+    const student = JSON.parse(localStorage.getItem("loggedInStudent"));
+    if (student) {
+        document.getElementById('student-name').textContent = student.username;
+    } else {
+        window.location.href = "student-login.html"; // Redirect to login if not logged in
+    }
+
+    // Load face-api.js models
+    async function loadModels() {
+        await faceapi.nets.ssdMobilenetv1.loadFromUri('/models');
+        await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
+        await faceapi.nets.faceRecognitionNet.loadFromUri('/models');
+    }
+
+    // Facial Recognition (Login)
+    async function startRecognition() {
+        await loadModels();
+        
+        const video = document.getElementById('video');
+        
+        // Start webcam
+        navigator.mediaDevices.getUserMedia({ video: {} })
+            .then((stream) => {
+                video.srcObject = stream;
+            }).catch(err => {
+                alert('Error accessing webcam: ' + err);
+            });
+
+        // When the faceapi model is ready, check for face recognition
+        video.onplaying = () => {
+            detectFace(video);
+        };
+    }
+
+    async function detectFace(video) {
+        const detections = await faceapi.detectSingleFace(video)
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+        if (detections) {
+            // Get the captured face descriptor
+            const capturedFace = detections.descriptor;
+            const storedFace = JSON.parse(localStorage.getItem("studentFaceDescriptor"));
+
+            // Compare captured face with stored face descriptor
+            if (storedFace && compareFaceDescriptors(capturedFace, storedFace)) {
+                document.getElementById('attendance-status').textContent = "Logged in!";
+                markAttendance();
+            } else {
+                alert("Face not recognized. Please try again.");
+                document.getElementById('attendance-status').textContent = "Login failed.";
+            }
+        } else {
+            alert("No face detected. Please try again.");
+            document.getElementById('attendance-status').textContent = "Login failed.";
+        }
+    }
+
+    // Compare the captured face descriptor with the stored face descriptor
+    function compareFaceDescriptors(capturedFace, storedFace) {
+        const distance = faceapi.euclideanDistance(capturedFace, storedFace);
+        return distance < 0.6; // Threshold for recognition (can be adjusted)
+    }
+
+    // Mark attendance when the student is successfully logged in
+    function markAttendance() {
+        const currentTime = new Date();
+        localStorage.setItem("attendance", JSON.stringify({ student: student.username, time: currentTime }));
+        alert("Attendance marked at " + currentTime);
+    }
+
+    // Facial Recognition (Registration)
+    async function startRegistration() {
+        await loadModels();
+        
+        const video = document.getElementById('video');
+        
+        // Start webcam
+        navigator.mediaDevices.getUserMedia({ video: {} })
+            .then((stream) => {
+                video.srcObject = stream;
+            }).catch(err => {
+                alert('Error accessing webcam: ' + err);
+            });
+
+        // When the faceapi model is ready, start face capture for registration
+        video.onplaying = () => {
+            captureFaceForRegistration(video);
+        };
+    }
+
+    async function captureFaceForRegistration(video) {
+        const detections = await faceapi.detectSingleFace(video)
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+        if (detections) {
+            const capturedFace = detections.descriptor;
+            const studentFaceDescriptor = JSON.stringify(capturedFace);
+
+            // Save the face descriptor in localStorage for future login
+            localStorage.setItem("studentFaceDescriptor", studentFaceDescriptor);
+
+            alert("Registration successful. Your face data has been saved.");
+            document.getElementById('attendance-status').textContent = "Registration successful!";
+        } else {
+            alert("No face detected. Please try again.");
+            document.getElementById('attendance-status').textContent = "Registration failed.";
+        }
+    }
+
+    // GPS Location
+    function getLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(showPosition, showError);
+        } else {
+            document.getElementById('location').innerHTML = "Geolocation is not supported by this browser.";
+        }
+    }
+
+    function showPosition(position) {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+        document.getElementById('location').innerHTML = "Latitude: " + lat + "<br>Longitude: " + lon;
+    }
+
+    function showError(error) {
+        switch(error.code) {
+            case error.PERMISSION_DENIED:
+                document.getElementById('location').innerHTML = "User denied the request for Geolocation.";
+                break;
+            case error.POSITION_UNAVAILABLE:
+                document.getElementById('location').innerHTML = "Location information is unavailable.";
+                break;
+            case error.TIMEOUT:
+                document.getElementById('location').innerHTML = "The request to get user location timed out.";
+                break;
+            case error.UNKNOWN_ERROR:
+                document.getElementById('location').innerHTML = "An unknown error occurred.";
+                break;
+        }
+    }
+
+    // Call to get the current location when page loads
+    window.onload = function() {
+        getLocation();
+    };
+
+    // Logout function to clear logged-in student
+    function logout() {
+        localStorage.removeItem("loggedInStudent");
+        localStorage.removeItem("studentFaceDescriptor"); // Clear stored face descriptor
+        window.location.href = "student-login.html"; // Redirect to login page
+    }
+</script>
+</body>
+</html>
